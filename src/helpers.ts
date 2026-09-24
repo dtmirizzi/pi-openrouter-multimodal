@@ -425,7 +425,12 @@ export async function generateImage(
     }
 
     // Format 2: content is an array with image_url blocks
-    const content = msg?.content as Array<Record<string, unknown>> | Record<string, unknown> | string | null | undefined;
+    const content = msg?.content as
+      | Array<Record<string, unknown>>
+      | Record<string, unknown>
+      | string
+      | null
+      | undefined;
     if (Array.isArray(content)) {
       const urls: string[] = [];
       for (const block of content) {
@@ -439,7 +444,12 @@ export async function generateImage(
     }
 
     // Format 3: single image_url in content
-    if (content && typeof content === "object" && !Array.isArray(content) && (content as Record<string, string>)?.type === "image_url") {
+    if (
+      content &&
+      typeof content === "object" &&
+      !Array.isArray(content) &&
+      (content as Record<string, string>)?.type === "image_url"
+    ) {
       const imageUrl = (content as Record<string, Record<string, string>>)?.image_url;
       const url = imageUrl?.url;
       if (url) return { ok: true, images: [url] };

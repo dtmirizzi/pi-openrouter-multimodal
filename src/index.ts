@@ -754,7 +754,9 @@ export default function (pi: ExtensionAPI) {
       "YouTube links are supported with Google Gemini models.",
     ],
     parameters: Type.Object({
-      url: Type.String({ description: "Video URL (YouTube links work with Gemini on AI Studio; direct MP4 URLs are not supported)" }),
+      url: Type.String({
+        description: "Video URL (YouTube links work with Gemini on AI Studio; direct MP4 URLs are not supported)",
+      }),
       prompt: Type.Optional(
         Type.String({ description: "What to analyze (default: 'Describe what happens in this video')" }),
       ),
@@ -815,7 +817,8 @@ export default function (pi: ExtensionAPI) {
       model: Type.Optional(Type.String({ description: "Model (overrides default from /web-models)" })),
       engine: Type.Optional(
         Type.String({
-          description: "PDF engine: native (default, no plugin, Gemini models only), mistral-ocr ($2/1000 pages, best for scanned docs), or cloudflare-ai (free, experimental)",
+          description:
+            "PDF engine: native (default, no plugin, Gemini models only), mistral-ocr ($2/1000 pages, best for scanned docs), or cloudflare-ai (free, experimental)",
         }),
       ),
     }),
@@ -848,10 +851,7 @@ export default function (pi: ExtensionAPI) {
         file: { filename: "document.pdf", file_data: dl.dataUrl! },
       };
 
-      const plugins =
-        engine === "native"
-          ? undefined
-          : [{ id: "file-parser" as const, pdf: { engine } }];
+      const plugins = engine === "native" ? undefined : [{ id: "file-parser" as const, pdf: { engine } }];
 
       const result = await callChatMultimodal(apiKey, prompt, contentBlock, model, plugins, signal, 65536);
 
