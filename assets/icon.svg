@@ -1,9 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
-  <rect width="128" height="128" rx="24" fill="#0F0F0F"/>
-  <circle cx="64" cy="56" r="32" fill="none" stroke="#FF6B35" stroke-width="6"/>
-  <text x="64" y="66" text-anchor="middle" fill="#FF6B35" font-family="system-ui,sans-serif" font-size="28" font-weight="700">⊗</text>
-  <circle cx="38" cy="88" r="5" fill="#4ECDC4"/>
-  <circle cx="56" cy="98" r="5" fill="#45B7D1"/>
-  <circle cx="74" cy="98" r="5" fill="#96CEB4"/>
-  <circle cx="92" cy="88" r="5" fill="#FFEAA7"/>
-</svg>
