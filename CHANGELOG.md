@@ -1,3 +1,20 @@
+# [1.7.0](https://github.com/dtmirizzi/pi-openrouter-multimodal/compare/v1.6.0...v1.7.0) (2026-09-24)
+
+
+### Bug Fixes
+
+* bump max_tokens per tool for large PDFs and videos ([4f1da51](https://github.com/dtmirizzi/pi-openrouter-multimodal/commit/4f1da51d221f73d163bbf32ab625e0493e5d52fb))
+* format code with biome ([9ace3ae](https://github.com/dtmirizzi/pi-openrouter-multimodal/commit/9ace3aef093293585f7ba7f5871d87eef9f51d67))
+* get all 8 tools working with correct APIs ([ebece54](https://github.com/dtmirizzi/pi-openrouter-multimodal/commit/ebece54634bfc4b23dc531eee792c6ff428792b8))
+* resolve TypeScript type errors ([d31c221](https://github.com/dtmirizzi/pi-openrouter-multimodal/commit/d31c221d407bfcfc62177b083de6b6b3536c8ce7))
+
+
+### Features
+
+* add package icon ([823e1fc](https://github.com/dtmirizzi/pi-openrouter-multimodal/commit/823e1fc550a0baaa67f4149b57146e77ffd3b617))
+* add svg icon alongside logo ([d31995e](https://github.com/dtmirizzi/pi-openrouter-multimodal/commit/d31995e1f8c535815da7a4353b836532db0d59d6))
+* AI-generated logo via Nano Banana ([3e29436](https://github.com/dtmirizzi/pi-openrouter-multimodal/commit/3e294360efc0447923d97e80c5eaa3b0dbe975f5))
+
 # [1.6.0](https://github.com/dtmirizzi/pi-openrouter-multimodal/compare/v1.5.3...v1.6.0) (2026-05-30)
 
 
