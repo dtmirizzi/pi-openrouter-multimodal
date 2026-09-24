@@ -1,3 +1,10 @@
+## [1.7.1](https://github.com/dtmirizzi/pi-openrouter-multimodal/compare/v1.7.0...v1.7.1) (2026-09-24)
+
+
+### Bug Fixes
+
+* remove svg placeholder, use png logo ([93cc248](https://github.com/dtmirizzi/pi-openrouter-multimodal/commit/93cc248353d730d78a97e51ca87718d53611d97f))
+
 # [1.7.0](https://github.com/dtmirizzi/pi-openrouter-multimodal/compare/v1.6.0...v1.7.0) (2026-09-24)
 
 
