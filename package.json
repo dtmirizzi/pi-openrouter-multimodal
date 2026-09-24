@@ -45,7 +45,8 @@
   "pi": {
     "extensions": [
       "./index.ts"
-    ]
+    ],
+    "image": "https://raw.githubusercontent.com/dtmirizzi/pi-openrouter-multimodal/main/assets/icon.svg"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",
