@@ -45,6 +45,7 @@ describe("restoreState", () => {
       ttsEnabled: false,
       ttsModel: "openai/gpt-4o-mini-tts",
       ttsVoice: "alloy",
+      ttsAutoplay: false,
       sttEnabled: false,
       sttModel: "openai/whisper-large-v3",
       compactStatus: false,

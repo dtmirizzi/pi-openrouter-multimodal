@@ -16,6 +16,7 @@
  * Settings at /web-tools and /web-models.
  */
 
+import { spawn, spawnSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -72,12 +73,27 @@ let visionModels: ModelOption[] = [...FALLBACK_VISION_MODELS];
 let videoModels: ModelOption[] = [...FALLBACK_VIDEO_MODELS];
 let pdfModels: ModelOption[] = [...FALLBACK_PDF_MODELS];
 let ttsModels: ModelOption[] = [...FALLBACK_TTS_MODELS];
-const ttsVoices: ModelOption[] = [...FALLBACK_TTS_VOICES];
 let sttModels: ModelOption[] = [...FALLBACK_STT_MODELS];
 
 /** Settings helpers */
 function _modelToSettingValue(m: ModelOption): string {
   return m.id;
+}
+
+/** Voices for a TTS model: its API-listed voices, else the OpenAI fallback list. */
+function knownVoices(modelId: string): string[] | undefined {
+  const v = ttsModels.find((m) => m.id === modelId)?.voices;
+  return v?.length ? v : undefined;
+}
+
+function voicesFor(modelId: string): string[] {
+  return knownVoices(modelId) ?? FALLBACK_TTS_VOICES.map((m) => m.id);
+}
+
+/** Keep the saved voice unless the model's voice list is known and excludes it. */
+function pickVoice(modelId: string, saved: string): string {
+  const known = knownVoices(modelId);
+  return known && !known.includes(saved) ? known[0] : saved;
 }
 
 function labelToModelId(label: string, options: ModelOption[]): string {
@@ -243,6 +259,12 @@ export default function (pi: ExtensionAPI) {
         { id: "p-enabled", label: "PDF Read", currentValue: state.pdfEnabled ? "on" : "off", values: ["on", "off"] },
         { id: "t-enabled", label: "TTS (Speak)", currentValue: state.ttsEnabled ? "on" : "off", values: ["on", "off"] },
         {
+          id: "t-autoplay",
+          label: "TTS Autoplay",
+          currentValue: state.ttsAutoplay ? "on" : "off",
+          values: ["on", "off"],
+        },
+        {
           id: "r-enabled",
           label: "STT (Transcribe)",
           currentValue: state.sttEnabled ? "on" : "off",
@@ -266,6 +288,7 @@ export default function (pi: ExtensionAPI) {
         else if (id === "d-enabled") state.videoEnabled = val === "on";
         else if (id === "p-enabled") state.pdfEnabled = val === "on";
         else if (id === "t-enabled") state.ttsEnabled = val === "on";
+        else if (id === "t-autoplay") state.ttsAutoplay = val === "on";
         else if (id === "r-enabled") state.sttEnabled = val === "on";
         else if (id === "compact") state.compactStatus = val === "compact";
         persistState(pi, state);
@@ -284,7 +307,7 @@ export default function (pi: ExtensionAPI) {
       const vidValues = videoModels.map((m) => m.label);
       const pdfValues = pdfModels.map((m) => m.label);
       const ttsValues = ttsModels.map((m) => m.label);
-      const voxValues = ttsVoices.map((m) => m.id);
+      const voxValues = voicesFor(state.ttsModel);
       const sttValues = sttModels.map((m) => m.label);
 
       // Current labels for display
@@ -314,8 +337,17 @@ export default function (pi: ExtensionAPI) {
         else if (id === "v-model") state.visionModel = labelToModelId(val, visionModels);
         else if (id === "d-model") state.videoModel = labelToModelId(val, videoModels);
         else if (id === "p-model") state.pdfModel = labelToModelId(val, pdfModels);
-        else if (id === "t-model") state.ttsModel = labelToModelId(val, ttsModels);
-        else if (id === "t-voice") state.ttsVoice = val;
+        else if (id === "t-model") {
+          state.ttsModel = labelToModelId(val, ttsModels);
+          // Swap the voice row to the new model's voices; keep the voice if still valid.
+          const voices = voicesFor(state.ttsModel);
+          state.ttsVoice = pickVoice(state.ttsModel, state.ttsVoice);
+          const voiceItem = items.find((it) => it.id === "t-voice");
+          if (voiceItem) {
+            voiceItem.values = voices;
+            voiceItem.currentValue = state.ttsVoice;
+          }
+        } else if (id === "t-voice") state.ttsVoice = val;
         else if (id === "r-model") state.sttModel = labelToModelId(val, sttModels);
         persistState(pi, state);
         applyState(ctx);
@@ -614,7 +646,7 @@ export default function (pi: ExtensionAPI) {
       }
 
       const model = (params.model as string) || state.ttsModel;
-      const voice = (params.voice as string) || state.ttsVoice;
+      const voice = (params.voice as string) || pickVoice(model, state.ttsVoice);
       onUpdate?.({ content: [{ type: "text", text: `Speaking: "${params.text.substring(0, 80)}..."` }], details: {} });
 
       const result = await speakText(apiKey, params.text, model, voice, signal);
@@ -623,18 +655,37 @@ export default function (pi: ExtensionAPI) {
         throw new Error(`TTS failed: ${result.error}`);
       }
 
-      const ext = result.contentType?.includes("mp3") ? "mp3" : "bin";
+      const type = result.contentType ?? "";
+      const ext = /wav/.test(type) ? "wav" : /mp3|mpeg/.test(type) ? "mp3" : "bin";
       const tmpPath = join(tmpdir(), `pi-tts-${Date.now()}.${ext}`);
       writeFileSync(tmpPath, Buffer.from(result.buffer!));
+
+      // Play locally without blocking; the saved file remains if no player is installed.
+      let player: string | undefined;
+      if (state.ttsAutoplay) {
+        for (const [bin, args] of [
+          ["mpv", ["--no-video", "--really-quiet", tmpPath]],
+          ["ffplay", ["-nodisp", "-autoexit", "-loglevel", "quiet", tmpPath]],
+          ["mpg123", ["-q", tmpPath]],
+        ] as const) {
+          // spawn() reports a missing binary asynchronously, so probe first.
+          if (spawnSync(bin, ["--version"], { stdio: "ignore", timeout: 3000 }).status !== 0) continue;
+          const child = spawn(bin, [...args], { detached: true, stdio: "ignore" });
+          child.on("error", () => {});
+          child.unref();
+          player = bin;
+          break;
+        }
+      }
 
       return {
         content: [
           {
             type: "text",
-            text: `TTS audio saved to: ${tmpPath}\nText: "${params.text}"\nModel: ${model}, Voice: ${voice}`,
+            text: `TTS audio saved to: ${tmpPath}\nText: "${params.text}"\nModel: ${model}, Voice: ${voice}${player ? `\nAutoplay: ${player}` : ""}`,
           },
         ],
-        details: { model, voice, savedTo: tmpPath, size: result.buffer!.byteLength },
+        details: { model, voice, savedTo: tmpPath, size: result.buffer!.byteLength, autoplay: player ?? false },
       };
     },
   });

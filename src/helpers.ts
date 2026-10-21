@@ -28,6 +28,7 @@ export interface ExtensionState {
   ttsEnabled: boolean;
   ttsModel: string;
   ttsVoice: string;
+  ttsAutoplay: boolean;
   sttEnabled: boolean;
   sttModel: string;
   compactStatus: boolean;
@@ -49,6 +50,7 @@ export const DEFAULT_STATE: ExtensionState = {
   ttsEnabled: false,
   ttsModel: "openai/gpt-4o-mini-tts",
   ttsVoice: "alloy",
+  ttsAutoplay: true,
   sttEnabled: false,
   sttModel: "openai/whisper-large-v3",
   compactStatus: false,
@@ -59,6 +61,8 @@ export const DEFAULT_STATE: ExtensionState = {
 export interface ModelOption {
   id: string;
   label: string;
+  /** Voices the model accepts (TTS only), from the API's `supported_voices`. */
+  voices?: string[];
 }
 
 // ── Fallback model lists (used when API is unavailable) ─────────────────────
@@ -130,6 +134,33 @@ export const FALLBACK_TTS_MODELS: ModelOption[] = [
   { id: "openai/gpt-audio-mini", label: "GPT-Audio Mini" },
   { id: "google/lyria-3-pro-preview", label: "Lyria 3 Pro" },
   { id: "google/lyria-3-clip-preview", label: "Lyria 3 Clip" },
+  {
+    id: "elevenlabs/eleven-v3",
+    label: "ElevenLabs: Eleven v3",
+    voices: [
+      "george",
+      "sarah",
+      "adam",
+      "alice",
+      "bella",
+      "bill",
+      "brian",
+      "callum",
+      "charlie",
+      "chris",
+      "daniel",
+      "eric",
+      "harry",
+      "jessica",
+      "laura",
+      "liam",
+      "lily",
+      "matilda",
+      "river",
+      "roger",
+      "will",
+    ],
+  },
 ];
 
 export const FALLBACK_TTS_VOICES: ModelOption[] = [
@@ -146,6 +177,7 @@ export const FALLBACK_STT_MODELS: ModelOption[] = [
   { id: "openai/whisper-large-v3-turbo", label: "Whisper Large V3 Turbo" },
   { id: "openai/gpt-audio", label: "GPT-Audio" },
   { id: "openai/gpt-audio-mini", label: "GPT-Audio Mini" },
+  { id: "elevenlabs/scribe-v2", label: "ElevenLabs: Scribe v2" },
 ];
 
 // ── Dynamic model fetching ──────────────────────────────────────────────────
@@ -158,6 +190,7 @@ interface OpenRouterModel {
     input_modalities?: string[];
     output_modalities?: string[];
   };
+  supported_voices?: string[] | null;
 }
 
 const OPENROUTER_API = "https://openrouter.ai/api/v1";
@@ -173,7 +206,7 @@ export async function fetchOpenRouterModels(apiKey: string): Promise<{
 }> {
   const empty = { image: [], tts: [], stt: [], vision: [], video: [], pdf: [] };
   try {
-    const res = await fetch(`${OPENROUTER_API}/models`, {
+    const res = await fetch(`${OPENROUTER_API}/models?output_modalities=all`, {
       headers: { Authorization: `Bearer ${apiKey}` },
       signal: AbortSignal.timeout(10000),
     });
@@ -200,8 +233,12 @@ export async function fetchOpenRouterModels(apiKey: string): Promise<{
       if (id === "openrouter/auto" || id.endsWith(":free")) continue;
 
       if (outp.includes("image")) image.push({ id, label });
-      if (outp.includes("audio")) tts.push({ id, label });
-      if (inp.includes("audio")) stt.push({ id, label });
+      // Dedicated speech/transcription models (ElevenLabs, Deepgram, ...) go first.
+      const voices = m.supported_voices?.length ? m.supported_voices : undefined;
+      if (outp.includes("speech")) tts.unshift({ id, label, voices });
+      else if (outp.includes("audio")) tts.push({ id, label, voices });
+      if (outp.includes("transcription")) stt.unshift({ id, label });
+      else if (inp.includes("audio")) stt.push({ id, label });
       if (inp.includes("image") && outp.includes("text")) vision.push({ id, label });
       if (inp.includes("video")) video.push({ id, label });
       if (inp.includes("image") && outp.includes("text")) pdf.push({ id, label });
@@ -462,7 +499,30 @@ export async function generateImage(
   }
 }
 
-/** Call OpenRouter TTS. Returns raw audio bytes. */
+/** Prepend a 44-byte WAV header to headerless 16-bit little-endian PCM. */
+export function wrapPcmAsWav(pcm: ArrayBuffer, sampleRate: number, channels: number): ArrayBuffer {
+  const buf = new ArrayBuffer(44 + pcm.byteLength);
+  const v = new DataView(buf);
+  const str = (off: number, s: string) => {
+    for (let i = 0; i < s.length; i++) v.setUint8(off + i, s.charCodeAt(i));
+  };
+  str(0, "RIFF");
+  v.setUint32(4, 36 + pcm.byteLength, true);
+  str(8, "WAVEfmt ");
+  v.setUint32(16, 16, true); // fmt chunk size
+  v.setUint16(20, 1, true); // PCM
+  v.setUint16(22, channels, true);
+  v.setUint32(24, sampleRate, true);
+  v.setUint32(28, sampleRate * channels * 2, true); // byte rate
+  v.setUint16(32, channels * 2, true); // block align
+  v.setUint16(34, 16, true); // bits per sample
+  str(36, "data");
+  v.setUint32(40, pcm.byteLength, true);
+  new Uint8Array(buf, 44).set(new Uint8Array(pcm));
+  return buf;
+}
+
+/** Call OpenRouter TTS. Returns WAV for PCM responses, otherwise the raw audio bytes. */
 export async function speakText(
   apiKey: string,
   text: string,
@@ -477,7 +537,7 @@ export async function speakText(
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ model, input: text, voice, response_format: "mp3" }),
+      body: JSON.stringify({ model, input: text, voice, response_format: "pcm" }),
       signal,
     });
 
@@ -488,6 +548,12 @@ export async function speakText(
 
     const buffer = await res.arrayBuffer();
     const contentType = res.headers.get("content-type") || "audio/mpeg";
+    // PCM is the provider's lossless output (e.g. `audio/pcm;rate=24000;channels=1`); MP3 is a lossy re-encode.
+    if (/audio\/pcm/i.test(contentType)) {
+      const rate = Number(/rate=(\d+)/.exec(contentType)?.[1] ?? 24000);
+      const channels = Number(/channels=(\d+)/.exec(contentType)?.[1] ?? 1);
+      return { ok: true, buffer: wrapPcmAsWav(buffer, rate, channels), contentType: "audio/wav" };
+    }
     return { ok: true, buffer, contentType };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
